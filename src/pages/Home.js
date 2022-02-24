@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { gql, useLazyQuery, useQuery } from "@apollo/client";
+import { gql, useLazyQuery, useMutation, useQuery } from "@apollo/client";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
@@ -36,19 +36,28 @@ const LIBRARIES = gql`
   }
 `;
 
+const ADD_BOOK_TO_LIBRARY = gql`
+  mutation AddBookToLibrary($book: BookInput!, $libraryId: ID!) {
+    addBookToLibrary(book: $book, libraryId: $libraryId) {
+      id
+      name
+      bookCount
+    }
+  }
+`;
+
 export const Home = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddToLibraryModal, setAddToLibraryModal] = useState(false);
   const [selectedBook, setSelectedBook] = useState();
   const [selectedLibrary, setSelectedLibrary] = useState();
 
-  const {
-    loading: pageLoading,
-    data: librariesData,
-    error,
-  } = useQuery(LIBRARIES);
+  const libraries = useQuery(LIBRARIES);
 
-  const [executeSearch, { loading, data }] = useLazyQuery(SEARCH);
+  const [executeSearch, search] = useLazyQuery(SEARCH);
+
+  const [executeAddBookToLibrary, addBookToLibrary] =
+    useMutation(ADD_BOOK_TO_LIBRARY);
 
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -70,7 +79,7 @@ export const Home = () => {
 
   const onAddToLibrary = (event) => {
     const bookId = event.target.id;
-    const book = data?.search?.find((each) => {
+    const book = search?.data?.search?.find((each) => {
       return each.id === bookId;
     });
     setSelectedBook(book);
@@ -83,8 +92,17 @@ export const Home = () => {
     setAddToLibraryModal(false);
   };
 
-  const onAddBook = (event) => {
+  const onAddBook = async (event) => {
     event.preventDefault();
+
+    const { __typename, ...rest } = selectedBook;
+
+    await executeAddBookToLibrary({
+      variables: {
+        book: rest,
+        libraryId: selectedLibrary,
+      },
+    });
 
     onModalClose();
   };
@@ -94,23 +112,20 @@ export const Home = () => {
     setSelectedLibrary(libraryId);
   };
 
-  console.log("selectedBook", selectedBook);
-  console.log("selectedLibrary", selectedLibrary);
-
   return (
     <Container fluid>
-      {pageLoading && (
+      {libraries.loading && (
         <Spinner animation="border" role="status">
           <span className="visually-hidden">Loading...</span>
         </Spinner>
       )}
-      {!pageLoading && librariesData && (
+      {!libraries.loading && libraries.data && (
         <Row>
           {showAddToLibraryModal && (
             <AddToLibraryModal
               show={showAddToLibraryModal}
               onClose={onModalClose}
-              libraries={librariesData.libraries}
+              libraries={libraries.data.libraries}
               onAddBook={onAddBook}
               onSelectLibrary={onSelectLibrary}
             />
@@ -120,17 +135,17 @@ export const Home = () => {
               onSubmit={onSubmit}
               onChange={onChange}
               searchTerm={searchTerm}
-              loading={loading}
+              loading={search.loading}
             />
           </Col>
-          {data?.search && (
+          {search.data?.search && (
             <Col
               sm={12}
               md={12}
               lg={12}
               className="d-flex flex-direction-row flex-wrap justify-content-center"
             >
-              {data?.search?.map((book) => {
+              {search.data?.search?.map((book) => {
                 return (
                   <BookCard
                     key={book.id}
